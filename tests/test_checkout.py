@@ -59,6 +59,15 @@ class CheckoutFlowTests(unittest.TestCase):
         self.assertIn(b'data-checkout-step="payment"', response.data)
         self.assertIn(b'name="cart_json"', response.data)
 
+    def test_health_reports_non_secret_runtime_readiness(self):
+        response = self.client.get("/health")
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["ok"])
+        self.assertIn("google_sheets_configured", payload)
+        self.assertNotIn("GOOGLE_SHEETS_WEBHOOK_SECRET", response.get_data(as_text=True))
+
     def test_valid_order_recalculates_total_saves_proof_email_and_sheet(self):
         email_patch = patch("app.send_order_confirmation_email", return_value=True)
         sheet_patch = patch(
@@ -141,7 +150,7 @@ class CheckoutFlowTests(unittest.TestCase):
             content_type="multipart/form-data",
         )
 
-        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.status_code, 400)
         self.assertIn(b"no larger than 8 MB", response.data)
         self.assertIn(b'data-error-step="payment"', response.data)
         response.close()
@@ -166,6 +175,48 @@ class CheckoutFlowTests(unittest.TestCase):
             order = json.load(order_file)
         self.assertEqual(order["google_sheet_sync"]["status"], "failed")
         self.assertEqual(order["total"], 125.0)
+
+    def test_vercel_streams_proof_to_google_without_local_writes(self):
+        runtime_patch = patch.object(store, "IS_VERCEL", True)
+        email_patch = patch("app.send_order_confirmation_email", return_value=True)
+        sheet_patch = patch(
+            "app.sync_order_to_google_sheet",
+            return_value={"status": "synced", "payment_proof_url": "https://drive.test/proof"},
+        )
+        with runtime_patch, email_patch, sheet_patch as sync_sheet:
+            response = self.client.post(
+                "/submit-order",
+                data=self.valid_form(),
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Thank you, Alicia Tan", response.data)
+        self.assertEqual(os.listdir(self.orders_dir), [])
+        self.assertEqual(os.listdir(self.uploads_dir), [])
+        sync_kwargs = sync_sheet.call_args.kwargs
+        self.assertIsNone(sync_kwargs["proof_path"])
+        self.assertEqual(sync_kwargs["proof_bytes"], b"receipt")
+
+    def test_vercel_withholds_confirmation_when_google_sync_fails(self):
+        runtime_patch = patch.object(store, "IS_VERCEL", True)
+        email_patch = patch("app.send_order_confirmation_email", return_value=True)
+        sheet_patch = patch(
+            "app.sync_order_to_google_sheet",
+            return_value={"status": "failed", "error": "temporary outage"},
+        )
+        with runtime_patch, email_patch as send_email, sheet_patch:
+            response = self.client.post(
+                "/submit-order",
+                data=self.valid_form(),
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn(b"No confirmation was issued", response.data)
+        self.assertEqual(os.listdir(self.orders_dir), [])
+        self.assertEqual(os.listdir(self.uploads_dir), [])
+        send_email.assert_not_called()
 
     def test_google_sheet_sync_posts_order_and_payment_proof(self):
         proof_path = os.path.join(self.uploads_dir, "HGC20-TEST.jpg")

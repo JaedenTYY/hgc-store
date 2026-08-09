@@ -29,6 +29,7 @@ from flask import (
     Flask,
     abort,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -38,6 +39,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+IS_VERCEL = os.environ.get("VERCEL") == "1"
 
 # Used only to sign the flash-message session cookie. Change this before
 # deploying publicly (any random string works).
@@ -270,7 +272,7 @@ def send_order_confirmation_email(order_record):
         return False
 
 
-def sync_order_to_google_sheet(order_record, proof_path):
+def sync_order_to_google_sheet(order_record, proof_path=None, proof_bytes=None):
     """
     Send a completed order and its payment proof to the configured Google
     Apps Script web app. The web app stores the proof in Drive and appends
@@ -288,8 +290,12 @@ def sync_order_to_google_sheet(order_record, proof_path):
         return {"status": "not_configured"}
 
     try:
-        with open(proof_path, "rb") as proof_file:
-            proof_base64 = base64.b64encode(proof_file.read()).decode("ascii")
+        if proof_bytes is None:
+            if not proof_path:
+                raise ValueError("Payment proof data is missing")
+            with open(proof_path, "rb") as proof_file:
+                proof_bytes = proof_file.read()
+        proof_base64 = base64.b64encode(proof_bytes).decode("ascii")
 
         proof_filename = order_record["payment_proof_filename"]
         proof_content_type = (
@@ -346,14 +352,25 @@ def sync_order_to_google_sheet(order_record, proof_path):
 # Folders & upload configuration
 # --------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")     # not publicly served
-ORDERS_FOLDER = os.path.join(BASE_DIR, "orders")
+# Vercel Functions cannot persist writes inside the deployed project. The
+# production checkout streams its proof directly to Google, while /tmp is
+# retained only as a safe runtime path for framework configuration.
+RUNTIME_DATA_FOLDER = "/tmp/hgc-store" if IS_VERCEL else BASE_DIR
+UPLOAD_FOLDER = os.path.join(RUNTIME_DATA_FOLDER, "uploads")
+ORDERS_FOLDER = os.path.join(RUNTIME_DATA_FOLDER, "orders")
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(ORDERS_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8 MB hard limit
+MAX_PROOF_MB = 4 if IS_VERCEL else 8
+MAX_PROOF_BYTES = MAX_PROOF_MB * 1024 * 1024
+# Allow a small amount of multipart form overhead beyond the actual file.
+app.config["MAX_CONTENT_LENGTH"] = MAX_PROOF_BYTES + 256 * 1024
+app.jinja_env.globals.update(
+    max_proof_mb=MAX_PROOF_MB,
+    max_proof_bytes=MAX_PROOF_BYTES,
+)
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf"}
 MAX_QUANTITY = 20
@@ -392,13 +409,25 @@ def index():
     return render_template("index.html", products=PRODUCTS, form_data={})
 
 
+@app.route("/health")
+def health():
+    """Expose non-secret deployment readiness for production diagnostics."""
+    return jsonify(
+        ok=True,
+        runtime="vercel" if IS_VERCEL else "local",
+        google_sheets_configured=GOOGLE_SHEETS_SYNC_IS_CONFIGURED,
+        email_configured=EMAIL_IS_CONFIGURED,
+        max_payment_proof_mb=MAX_PROOF_MB,
+    )
+
+
 @app.errorhandler(413)
 def upload_too_large(_error):
     """Return buyers to payment with a useful message for oversized receipts."""
     return render_template(
         "index.html",
         products=PRODUCTS,
-        errors=["Payment proof must be no larger than 8 MB."],
+        errors=[f"Payment proof must be no larger than {MAX_PROOF_MB} MB."],
         error_step="payment",
         form_data={},
     ), 413
@@ -503,6 +532,14 @@ def submit_order():
         payment_errors.append("Please upload your proof of payment.")
     elif not allowed_file(proof_file.filename):
         payment_errors.append("Proof of payment must be a PNG, JPG, JPEG, or PDF file.")
+    else:
+        proof_file.stream.seek(0, os.SEEK_END)
+        proof_size = proof_file.stream.tell()
+        proof_file.stream.seek(0)
+        if proof_size > MAX_PROOF_BYTES:
+            payment_errors.append(
+                f"Payment proof must be no larger than {MAX_PROOF_MB} MB."
+            )
 
     errors = cart_errors + customer_errors + payment_errors
     if errors:
@@ -522,8 +559,6 @@ def submit_order():
     # customer's original filename (avoids collisions / info leaks).
     original_ext = proof_file.filename.rsplit(".", 1)[1].lower()
     stored_filename = secure_filename(f"{order_ref}.{original_ext}")
-    proof_path = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
-    proof_file.save(proof_path)
 
     order_record = {
         "order_reference": order_ref,
@@ -538,18 +573,41 @@ def submit_order():
         "payment_proof_filename": stored_filename,
     }
 
-    order_path = os.path.join(ORDERS_FOLDER, f"{order_ref}.json")
-    save_order_record(order_path, order_record)
+    proof_path = None
+    proof_bytes = None
+    order_path = None
+    if IS_VERCEL:
+        # Serverless deployment files are read-only/ephemeral. Stream the
+        # receipt to Google instead of pretending a local file is durable.
+        proof_bytes = proof_file.read()
+    else:
+        proof_path = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
+        proof_file.save(proof_path)
+        order_path = os.path.join(ORDERS_FOLDER, f"{order_ref}.json")
+        save_order_record(order_path, order_record)
 
-    # Best-effort: send the order to the shared Google Sheet. The local
-    # record is written first, so an outage or bad webhook never loses the
-    # customer's order. Apps Script rejects duplicate order references,
-    # making later retries safe.
+    # Send the order to the shared Google Sheet. Local development writes a
+    # backup first. On Vercel, Google is the durable store and confirmation
+    # is withheld if sync fails. Duplicate references make retries safe.
     order_record["google_sheet_sync"] = sync_order_to_google_sheet(
         order_record,
-        proof_path,
+        proof_path=proof_path,
+        proof_bytes=proof_bytes,
     )
-    save_order_record(order_path, order_record)
+    if order_path:
+        save_order_record(order_path, order_record)
+
+    if IS_VERCEL and order_record["google_sheet_sync"]["status"] != "synced":
+        return render_template(
+            "index.html",
+            products=PRODUCTS,
+            errors=[
+                "We couldn't securely save this order to Google Sheets. "
+                "No confirmation was issued—please upload the payment proof and try again."
+            ],
+            error_step="payment",
+            form_data=request.form,
+        ), 503
 
     # Best-effort: email the customer a copy of their order. If this
     # fails (e.g. SMTP not configured yet), the order itself has still

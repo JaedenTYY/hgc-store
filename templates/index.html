@@ -7,7 +7,7 @@
   <meta name="description" content="Shop Harvest Generation Church's 20th Anniversary collection and check out securely with DuitNow.">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
-<body data-error-step="{{ error_step|default('') }}">
+<body data-error-step="{{ error_step|default('') }}" data-max-proof-bytes="{{ max_proof_bytes }}">
 
 <a class="skip-link" href="#main-content">Skip to main content</a>
 
@@ -185,7 +185,7 @@
                 <input type="file" id="payment_proof" name="payment_proof" accept=".png,.jpg,.jpeg,.pdf" required>
                 <label for="payment_proof">
                   <span class="upload-icon" aria-hidden="true">↑</span>
-                  <span><strong id="file-upload-title">Upload payment proof</strong><small id="file-upload-name">PNG, JPG or PDF · up to 8 MB</small></span>
+                  <span><strong id="file-upload-title">Upload payment proof</strong><small id="file-upload-name">PNG, JPG or PDF · up to {{ max_proof_mb }} MB</small></span>
                   <span class="btn btn-secondary">Choose file</span>
                 </label>
                 <p class="field-error" id="payment-proof-error"></p>

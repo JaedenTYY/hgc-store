@@ -4,6 +4,8 @@ document.documentElement.classList.add("js");
 
 const CART_STORAGE_KEY = "hgc-anniversary-cart-v1";
 const MAX_QTY = 20;
+const MAX_PROOF_BYTES = Number(document.body.dataset.maxProofBytes) || 8 * 1024 * 1024;
+const MAX_PROOF_MB = Math.round(MAX_PROOF_BYTES / 1024 / 1024);
 const STEP_ORDER = ["cart", "details", "payment"];
 
 let cart = [];
@@ -266,7 +268,7 @@ function validatePayment() {
   let message = "";
   if (!file) message = "Upload your payment proof to submit this order.";
   else if (!allowed.includes(file.name.split(".").pop().toLowerCase())) message = "Choose a PNG, JPG, JPEG or PDF file.";
-  else if (file.size > 8 * 1024 * 1024) message = "This file is larger than 8 MB. Choose a smaller file.";
+  else if (file.size > MAX_PROOF_BYTES) message = `This file is larger than ${MAX_PROOF_MB} MB. Choose a smaller file.`;
   error.textContent = message;
   input.setAttribute("aria-invalid", message ? "true" : "false");
   if (message) input.focus();
@@ -339,7 +341,7 @@ function updateFileDisplay() {
     area.classList.add("has-file");
   } else {
     document.getElementById("file-upload-title").textContent = "Upload payment proof";
-    document.getElementById("file-upload-name").textContent = "PNG, JPG or PDF · up to 8 MB";
+    document.getElementById("file-upload-name").textContent = `PNG, JPG or PDF · up to ${MAX_PROOF_MB} MB`;
     area.classList.remove("has-file");
   }
   validatePayment();

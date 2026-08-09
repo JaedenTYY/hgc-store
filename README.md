@@ -221,10 +221,48 @@ python3 -m flask --app app sync-google-sheet
 The Apps Script checks order references before inserting, so retries do not
 create duplicate spreadsheet rows.
 
+### Deploying this checkout on Vercel
+
+The local `.env` file is deliberately excluded from Git, so Vercel cannot read
+it. In the Vercel project, open **Settings → Environment Variables** and add
+these values for the **Production** environment:
+
+```text
+GOOGLE_SHEETS_WEBHOOK_URL
+GOOGLE_SHEETS_WEBHOOK_SECRET
+FLASK_SECRET_KEY
+SMTP_SERVER
+SMTP_PORT
+SMTP_USERNAME
+SMTP_PASSWORD
+SENDER_EMAIL
+SENDER_NAME
+```
+
+Redeploy after adding or changing variables; Vercel only applies environment
+variable changes to new deployments. Open `/health` on the deployed store and
+confirm it reports:
+
+```json
+{
+  "ok": true,
+  "runtime": "vercel",
+  "google_sheets_configured": true,
+  "max_payment_proof_mb": 4
+}
+```
+
+Vercel Functions do not provide a persistent project filesystem. In production,
+the checkout therefore streams the payment proof directly to Apps Script/Drive
+and treats Google Sheets as the durable order store. It only displays the order
+confirmation page after Google acknowledges the order. Vercel also limits
+Function request bodies to 4.5 MB, so the deployed storefront restricts payment
+proofs to 4 MB.
+
 ## 9. Where submitted orders are stored
 
-Every completed order is saved as a JSON file in the **`orders/`**
-folder, named after its order reference, e.g.:
+During local/self-hosted operation, every completed order is also saved as a
+JSON file in the **`orders/`** folder, named after its order reference, e.g.:
 
 ```
 orders/HGC20-20260809-4F2A9B1C.json
@@ -232,16 +270,18 @@ orders/HGC20-20260809-4F2A9B1C.json
 
 Each file contains the customer's name, email, phone, every product/size/
 quantity/subtotal, the server-calculated final total, and the stored
-filename of their payment proof.
+filename of their payment proof. Vercel uses Google Sheets as the durable
+record because its Function filesystem is not persistent.
 
 ## 10. Where payment proofs are stored
 
-Uploaded proof-of-payment files are saved in the **`uploads/`** folder,
+During local/self-hosted operation, uploaded payment proofs are saved in the **`uploads/`** folder,
 renamed to the order reference (e.g. `HGC20-20260809-4F2A9B1C.jpg`) —
 never under the customer's original filename. This folder is **not**
 served publicly by the website (there is no working URL that lets a
 visitor browse or download it), so payment receipts stay private. Only
-someone with direct access to the server's files can open them.
+someone with direct access to the server's files can open them. On Vercel,
+proofs are streamed directly into the configured Google Drive folder instead.
 
 ## 11. How to replace a product or size-chart image without touching the code
 
