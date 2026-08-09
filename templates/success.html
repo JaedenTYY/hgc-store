@@ -1,88 +1,77 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Order Confirmed — Harvest Generation Church</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order received · {{ order.order_reference }}</title>
+  <meta name="description" content="Your Harvest Generation Church anniversary apparel order has been received.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
-<body>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <span class="brand">Harvest Generation Church</span>
-  </div>
-</header>
-
-<main class="wrap success-wrap">
-  <section class="success-card">
-    <div class="success-icon" aria-hidden="true">&#10003;</div>
-    <h1 class="success-title">Order submitted successfully</h1>
-    <p class="success-sub">Thank you, {{ order.customer.full_name }} — we've received your order.</p>
-
-    <div class="order-ref-box">
-      <span class="order-ref-label">Order reference</span>
-      <span class="order-ref-value">{{ order.order_reference }}</span>
+<body class="success-page">
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a href="{{ url_for('index') }}" class="brand-button">
+        <span class="brand-mark" aria-hidden="true">20</span>
+        <span class="brand-copy"><strong>Harvest Generation</strong><small>Anniversary Collection</small></span>
+      </a>
+      <span class="secure-confirmation"><i aria-hidden="true"></i> Order received</span>
     </div>
+  </header>
 
-    <div class="order-details">
-      <h2 class="panel-title">Order Summary</h2>
-      <table class="order-table">
-        <thead>
-          <tr>
-            <th scope="col">Product</th>
-            <th scope="col">Size</th>
-            <th scope="col">Qty</th>
-            <th scope="col">Unit Price</th>
-            <th scope="col">Subtotal</th>
-          </tr>
-        </thead>
-        <tbody>
+  <main class="wrap success-wrap">
+    <section class="success-hero">
+      <span class="success-check" aria-hidden="true">✓</span>
+      <p class="eyebrow">Payment proof received</p>
+      <h1>Thank you, {{ order.customer.full_name }}.</h1>
+      <p>Your order is safely with us. We’ll verify the payment proof and keep you updated using the details below.</p>
+      <div class="reference-box"><span>Order reference</span><strong>{{ order.order_reference }}</strong><small>Keep this reference for any order questions.</small></div>
+    </section>
+
+    <div class="success-grid">
+      <section class="success-order-card" aria-labelledby="summary-heading">
+        <div class="success-card-heading"><div><p class="eyebrow">Order details</p><h2 id="summary-heading">Your anniversary pieces</h2></div><strong>{{ order.total | ringgit }}</strong></div>
+        <div class="success-lines">
           {% for item in order.order_items %}
-          <tr>
-            <td>{{ item.name }}</td>
-            <td>{{ item.size }}</td>
-            <td>{{ item.quantity }}</td>
-            <td>{{ item.unit_price | ringgit }}</td>
-            <td>{{ item.subtotal | ringgit }}</td>
-          </tr>
+          <article class="success-line">
+            <img src="{{ url_for('static', filename='images/' + products[item.product_id].image) }}" alt="">
+            <div><h3>{{ item.name }}</h3><p>Size {{ item.size }} · Qty {{ item.quantity }}</p><small>{{ item.unit_price | ringgit }} each</small></div>
+            <strong>{{ item.subtotal | ringgit }}</strong>
+          </article>
           {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="4" class="total-label">Final total paid</td>
-            <td class="total-amount">{{ order.total | ringgit }}</td>
-          </tr>
-        </tfoot>
-      </table>
+        </div>
+        <div class="success-total"><span>Order amount</span><strong>{{ order.total | ringgit }}</strong></div>
+      </section>
 
-      <p class="proof-confirm">&#10003; Proof of payment received and saved to your order.</p>
-
-      {% if email_sent %}
-      <p class="proof-confirm">&#10003; A copy of this order summary has been emailed to {{ order.customer.email }}.</p>
-      {% else %}
-      <p class="email-warning">We couldn't send a confirmation email to {{ order.customer.email }} right now — please keep your order reference above for your records.</p>
-      {% endif %}
+      <aside class="success-side">
+        <section class="status-card">
+          <h2>What happens next?</h2>
+          <ol>
+            <li class="is-done"><span>✓</span><div><strong>Order submitted</strong><small>Your proof and details are saved.</small></div></li>
+            <li><span>2</span><div><strong>Payment verification</strong><small>Our team will review your receipt.</small></div></li>
+            <li><span>3</span><div><strong>Collection update</strong><small>We’ll contact you when it’s ready.</small></div></li>
+          </ol>
+        </section>
+        <section class="contact-card">
+          <h2>Confirmation details</h2>
+          <dl><div><dt>Name</dt><dd>{{ order.customer.full_name }}</dd></div><div><dt>Email</dt><dd>{{ order.customer.email }}</dd></div><div><dt>Contact</dt><dd>{{ order.customer.phone }}</dd></div></dl>
+          {% if email_sent %}
+          <p class="email-status success"><span>✓</span> A confirmation email is on its way.</p>
+          {% else %}
+          <p class="email-status warning">Email delivery is delayed. Your order is saved—keep the reference above.</p>
+          {% endif %}
+        </section>
+      </aside>
     </div>
 
     <div class="success-actions">
-      <a href="{{ google_form_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-large">
-        Continue to Google Order Form
-      </a>
-      <a href="{{ url_for('index') }}" class="btn btn-ghost btn-large">Return to Apparel Store</a>
+      <a href="{{ url_for('index') }}" class="btn btn-primary">Return to collection</a>
+      {% if google_form_url and google_form_url != "INSERT_PUBLISHED_GOOGLE_FORM_URL_HERE" %}
+      <a href="{{ google_form_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Open official order form</a>
+      {% endif %}
     </div>
+  </main>
 
-    {% if google_form_url == "INSERT_PUBLISHED_GOOGLE_FORM_URL_HERE" %}
-    <p class="form-notice">Note to site admin: set <code>GOOGLE_FORM_URL</code> in <code>app.py</code> to your published Google Form link.</p>
-    {% endif %}
-  </section>
-</main>
-
-<footer class="site-footer">
-  <div class="wrap">
-    <p>Harvest Generation Church &middot; 20th Anniversary Apparel</p>
-  </div>
-</footer>
-
+  <footer class="site-footer"><div class="wrap footer-inner"><div><strong>HGC · 20</strong><span>Anniversary Collection</span></div><p>Celebrating twenty years of faith, family and discipleship.</p></div></footer>
+  <script>localStorage.removeItem("hgc-anniversary-cart-v1");</script>
 </body>
 </html>

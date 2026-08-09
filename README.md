@@ -1,8 +1,10 @@
 # Harvest Generation Church — 20th Anniversary Apparel Store
 
-A small Flask website for ordering the church's 20th‑anniversary T‑shirts
-and 'hg' hoodies, collecting proof of DuitNow payment, and generating an
-order reference for each customer.
+A small Flask website with a guided **Shop → Cart → Details → Payment**
+flow for ordering the church's 20th-anniversary T-shirts and 'hg' hoodies.
+It supports multiple product/size variants in one cart, collects proof of
+DuitNow payment, generates an order reference, and emails the buyer a
+complete order summary.
 
 ---
 
@@ -37,7 +39,8 @@ venv\Scripts\activate           # Windows
 pip install -r requirements.txt
 ```
 
-This installs Flask and Werkzeug, the only two packages the site needs.
+This installs Flask, Werkzeug, and python-dotenv (used to load local email
+and secret-key configuration without committing credentials).
 
 ## 3. Run the website
 
@@ -110,8 +113,8 @@ example:
 GOOGLE_FORM_URL = "https://forms.gle/your-form-id"
 ```
 
-This is the link customers are sent to (in a new tab) after they submit
-an order and payment proof on this site.
+When configured, this optional link is shown after customers submit an
+order and payment proof on this site.
 
 **Important:** this website does **not** automatically push the order or
 the uploaded payment-proof file into the Google Form. Doing that would
@@ -126,26 +129,26 @@ themselves after using this site.
 
 After a customer submits an order, the site emails them a summary
 (order reference, items, sizes, quantities, prices, and total). To turn
-this on, open **`app.py`** and find:
+this on, copy **`.env.example`** to **`.env`** and set:
 
-```python
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-SMTP_USERNAME = "INSERT_SENDER_EMAIL_HERE"
-SMTP_PASSWORD = "INSERT_EMAIL_APP_PASSWORD_HERE"
-SENDER_EMAIL = "INSERT_SENDER_EMAIL_HERE"
-SENDER_NAME = "Harvest Generation Church"
+```dotenv
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=yourchurch@gmail.com
+SMTP_PASSWORD=your-16-character-app-password
+SENDER_EMAIL=yourchurch@gmail.com
+SENDER_NAME="Harvest Generation Church"
 ```
 
 **If you're using Gmail** (recommended for a church account):
 
 1. Turn on 2-Step Verification on the Google account you'll send from: [myaccount.google.com/security](https://myaccount.google.com/security).
 2. Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), create a new App Password (name it something like "HGC Apparel Site"), and copy the 16-character code it gives you.
-3. In `app.py`, set:
-   ```python
-   SMTP_USERNAME = "yourchurch@gmail.com"
-   SMTP_PASSWORD = "the 16-character app password"   # NOT your normal Gmail password
-   SENDER_EMAIL = "yourchurch@gmail.com"
+3. In `.env`, set:
+   ```dotenv
+   SMTP_USERNAME=yourchurch@gmail.com
+   SMTP_PASSWORD=the-16-character-app-password
+   SENDER_EMAIL=yourchurch@gmail.com
    ```
 4. Leave `SMTP_SERVER`/`SMTP_PORT` as-is — they're already set for Gmail.
 
@@ -159,9 +162,8 @@ skips sending the email and prints a note to the terminal instead. The
 order confirmation page also tells the customer directly if their email
 couldn't be sent, so no order is ever lost.
 
-⚠️ Keep `SMTP_PASSWORD` private. Don't commit it to a public GitHub
-repository — for real deployments, load it from an environment variable
-instead of hard-coding it in `app.py`.
+⚠️ Keep `SMTP_PASSWORD` private. The included `.gitignore` excludes `.env`;
+do not force-add that file to Git.
 
 ## 8. Where submitted orders are stored
 
@@ -203,15 +205,17 @@ hgc-store/
 ├── app.py                     — Flask app: product data, validation, order processing
 ├── requirements.txt           — Python dependencies
 ├── README.md                  — this file
+├── .env.example               — safe template for local configuration
 ├── templates/
-│   ├── index.html             — storefront (products, details, payment, form)
+│   ├── index.html             — storefront and guided checkout
 │   └── success.html           — order confirmation page
 ├── static/
 │   ├── css/styles.css         — all styling
-│   ├── js/script.js           — quantity steppers, live totals, modals
+│   ├── js/script.js           — cart state, checkout stages, validation, modals
 │   └── images/                — the seven supplied images
 ├── uploads/                   — private: stores payment proof files
-└── orders/                    — stores one JSON file per submitted order
+├── orders/                    — stores one JSON file per submitted order
+└── tests/test_checkout.py     — checkout and order-processing regression tests
 ```
 
 ## 12. A note on trust and security

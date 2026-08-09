@@ -16,6 +16,11 @@ import ssl
 import uuid
 from datetime import datetime
 from email.message import EmailMessage
+from html import escape
+
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
 
 from flask import (
     Flask,
@@ -33,7 +38,7 @@ app = Flask(__name__)
 
 # Used only to sign the flash-message session cookie. Change this before
 # deploying publicly (any random string works).
-app.secret_key = "harvest-generation-2020-2040-change-me"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "harvest-generation-2020-2040-change-me")
 
 
 # =====================================================================
@@ -132,17 +137,21 @@ GOOGLE_FORM_URL = "INSERT_PUBLISHED_GOOGLE_FORM_URL_HERE"
 # will be sent, and a note is printed to the server console instead.
 # =====================================================================
 
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-SMTP_USERNAME = "INSERT_SENDER_EMAIL_HERE"
-SMTP_PASSWORD = "INSERT_EMAIL_APP_PASSWORD_HERE"
-SENDER_EMAIL = "INSERT_SENDER_EMAIL_HERE"
-SENDER_NAME = "Harvest Generation Church"
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
+SENDER_NAME = os.environ.get("SENDER_NAME", "Harvest Generation Church")
 
 EMAIL_IS_CONFIGURED = (
-    SMTP_USERNAME not in ("", "INSERT_SENDER_EMAIL_HERE")
-    and SMTP_PASSWORD not in ("", "INSERT_EMAIL_APP_PASSWORD_HERE")
+    bool(SMTP_USERNAME) and SMTP_USERNAME != "INSERT_SENDER_EMAIL_HERE"
+    and bool(SMTP_PASSWORD) and SMTP_PASSWORD != "INSERT_EMAIL_APP_PASSWORD_HERE"
 )
+
+
+def google_form_is_configured():
+    return bool(GOOGLE_FORM_URL) and GOOGLE_FORM_URL != "INSERT_PUBLISHED_GOOGLE_FORM_URL_HERE"
 
 
 def send_order_confirmation_email(order_record):
@@ -182,12 +191,16 @@ def send_order_confirmation_email(order_record):
         "",
         f"Total paid: {to_ringgit(order_record['total'])}",
         "",
-        "We've received your proof of payment. If you haven't already, "
-        "please also complete the official Google Order Form.",
+        "We've received your proof of payment and will verify it shortly.",
         "",
         "God bless,",
         "Harvest Generation Church",
     ]
+    if google_form_is_configured():
+        lines[lines.index("God bless,"):lines.index("God bless,")] = [
+            f"Order form: {GOOGLE_FORM_URL}",
+            "",
+        ]
     text_body = "\n".join(lines)
 
     # ---- Simple HTML body ------------------------------------------
@@ -204,7 +217,7 @@ def send_order_confirmation_email(order_record):
     html_body = f"""
     <div style="font-family:Arial,Helvetica,sans-serif;color:#2a3550;max-width:560px;margin:0 auto;">
       <h2 style="color:#1b2a4a;">Order Confirmed — Harvest Generation Church</h2>
-      <p>Hi {customer['full_name']},</p>
+      <p>Hi {escape(customer['full_name'])},</p>
       <p>Thank you for your order! Here is a summary:</p>
       <p><strong>Order reference:</strong> {order_record['order_reference']}</p>
       <table style="border-collapse:collapse;width:100%;font-size:14px;">
@@ -222,15 +235,15 @@ def send_order_confirmation_email(order_record):
       <p style="text-align:right;font-size:16px;font-weight:bold;color:#1b2a4a;margin-top:10px;">
         Total paid: {to_ringgit(order_record['total'])}
       </p>
-      <p>We've received your proof of payment. If you haven't already, please also
-      complete the official Google Order Form.</p>
+      <p>We've received your proof of payment and will verify it shortly.</p>
+      {f'<p><a href="{escape(GOOGLE_FORM_URL, quote=True)}">Complete the official order form</a></p>' if google_form_is_configured() else ''}
       <p>God bless,<br>Harvest Generation Church</p>
     </div>
     """
 
     message = EmailMessage()
     message["Subject"] = f"Order Confirmed — {order_record['order_reference']}"
-    message["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
+    message["From"] = f"{SENDER_NAME} <{SENDER_EMAIL or SMTP_USERNAME}>"
     message["To"] = customer["email"]
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
@@ -287,7 +300,19 @@ app.jinja_env.filters["ringgit"] = to_ringgit
 @app.route("/")
 def index():
     """Show the storefront with all four products."""
-    return render_template("index.html", products=PRODUCTS)
+    return render_template("index.html", products=PRODUCTS, form_data={})
+
+
+@app.errorhandler(413)
+def upload_too_large(_error):
+    """Return buyers to payment with a useful message for oversized receipts."""
+    return render_template(
+        "index.html",
+        products=PRODUCTS,
+        errors=["Payment proof must be no larger than 8 MB."],
+        error_step="payment",
+        form_data={},
+    ), 413
 
 
 @app.route("/submit-order", methods=["POST"])
@@ -297,7 +322,9 @@ def submit_order():
     proof-of-payment file safely, write an order JSON file, and show
     the confirmation page. Never trusts numbers sent from the browser.
     """
-    errors = []
+    customer_errors = []
+    cart_errors = []
+    payment_errors = []
 
     # ---- Customer details ----------------------------------------
     full_name = (request.form.get("full_name") or "").strip()
@@ -305,69 +332,97 @@ def submit_order():
     phone = (request.form.get("phone") or "").strip()
 
     if len(full_name) < 2:
-        errors.append("Please enter your full name.")
+        customer_errors.append("Please enter your full name.")
     if not EMAIL_REGEX.match(email):
-        errors.append("Please enter a valid email address.")
+        customer_errors.append("Please enter a valid email address.")
     if not PHONE_REGEX.match(phone):
-        errors.append("Please enter a valid phone number.")
+        customer_errors.append("Please enter a valid phone number.")
 
-    # ---- Product lines ---------------------------------------------
-    # Expected form field naming per product: qty_<id>, size_<id>
+    # ---- Cart lines ------------------------------------------------
+    # The browser sends product/size/quantity only. Prices and product
+    # names are always looked up again here, so cart JSON is never a
+    # source of truth for monetary values.
     order_items = []
     computed_total = 0.0
+    cart_raw = request.form.get("cart_json", "[]")
+    try:
+        cart_lines = json.loads(cart_raw)
+        if not isinstance(cart_lines, list):
+            raise ValueError
+    except (json.JSONDecodeError, TypeError, ValueError):
+        cart_lines = []
+        cart_errors.append("Your cart could not be read. Please review it and try again.")
 
-    for product_id, product in PRODUCTS.items():
-        qty_raw = request.form.get(f"qty_{product_id}", "0")
-        size = (request.form.get(f"size_{product_id}") or "").strip()
+    merged_lines = {}
+    for line in cart_lines:
+        if not isinstance(line, dict):
+            cart_errors.append("Your cart contains an invalid item.")
+            continue
 
+        product_id = str(line.get("product_id", ""))
+        size = str(line.get("size", "")).strip()
+        product = PRODUCTS.get(product_id)
+        if not product:
+            cart_errors.append("Your cart contains a product that is no longer available.")
+            continue
+        if size not in product["sizes"]:
+            cart_errors.append(f"Please select a valid size for {product['name']}.")
+            continue
+        quantity_raw = line.get("quantity", 0)
         try:
-            qty = int(qty_raw)
+            if isinstance(quantity_raw, bool) or not str(quantity_raw).isdigit():
+                raise ValueError
+            qty = int(quantity_raw)
         except (TypeError, ValueError):
-            qty = 0
+            cart_errors.append(f"Please enter a valid quantity for {product['name']}.")
+            continue
+        if qty < 1:
+            cart_errors.append(f"Quantity for {product['name']} must be at least 1.")
+            continue
 
-        if qty < 0:
-            errors.append(f"Quantity for {product['name']} cannot be negative.")
-            qty = 0
+        key = (product_id, size)
+        merged_lines[key] = merged_lines.get(key, 0) + qty
+
+    for (product_id, size), qty in merged_lines.items():
+        product = PRODUCTS[product_id]
         if qty > MAX_QUANTITY:
-            errors.append(
-                f"Quantity for {product['name']} cannot exceed {MAX_QUANTITY}."
+            cart_errors.append(
+                f"Quantity for {product['name']} in size {size} cannot exceed {MAX_QUANTITY}."
             )
-            qty = MAX_QUANTITY
+            continue
+        subtotal = round(product["price"] * qty, 2)
+        computed_total += subtotal
+        order_items.append(
+            {
+                "product_id": product_id,
+                "name": product["name"],
+                "size": size,
+                "quantity": qty,
+                "unit_price": product["price"],
+                "subtotal": subtotal,
+            }
+        )
 
-        if qty > 0:
-            if size not in product["sizes"]:
-                errors.append(f"Please select a valid size for {product['name']}.")
-                continue
-            subtotal = round(product["price"] * qty, 2)
-            computed_total += subtotal
-            order_items.append(
-                {
-                    "product_id": product_id,
-                    "name": product["name"],
-                    "size": size,
-                    "quantity": qty,
-                    "unit_price": product["price"],
-                    "subtotal": subtotal,
-                }
-            )
-
-    if not order_items:
-        errors.append("Please select at least one product with a quantity and size.")
+    if not order_items and not cart_errors:
+        cart_errors.append("Your cart is empty. Add at least one item to continue.")
 
     computed_total = round(computed_total, 2)
 
     # ---- Proof of payment -------------------------------------------
     proof_file = request.files.get("payment_proof")
     if not proof_file or proof_file.filename == "":
-        errors.append("Please upload your proof of payment.")
+        payment_errors.append("Please upload your proof of payment.")
     elif not allowed_file(proof_file.filename):
-        errors.append("Proof of payment must be a PNG, JPG, JPEG, or PDF file.")
+        payment_errors.append("Proof of payment must be a PNG, JPG, JPEG, or PDF file.")
 
+    errors = cart_errors + customer_errors + payment_errors
     if errors:
+        error_step = "cart" if cart_errors else "details" if customer_errors else "payment"
         return render_template(
             "index.html",
             products=PRODUCTS,
             errors=errors,
+            error_step=error_step,
             form_data=request.form,
         ), 400
 
@@ -406,6 +461,7 @@ def submit_order():
     return render_template(
         "success.html",
         order=order_record,
+        products=PRODUCTS,
         google_form_url=GOOGLE_FORM_URL,
         email_sent=email_sent,
     )

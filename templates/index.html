@@ -1,203 +1,226 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Harvest Generation Church — 20th Anniversary Apparel</title>
-<meta name="description" content="Order Harvest Generation Church's 20th Anniversary T-shirts and 'hg' hoodies.">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HGC 20 — Anniversary Collection</title>
+  <meta name="description" content="Shop Harvest Generation Church's 20th Anniversary collection and check out securely with DuitNow.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
-<body>
+<body data-error-step="{{ error_step|default('') }}">
 
-<a class="skip-link" href="#collection">Skip to product collection</a>
+<a class="skip-link" href="#main-content">Skip to main content</a>
 
-<!-- ============ HEADER ============ -->
 <header class="site-header">
   <div class="wrap header-inner">
-    <span class="brand">Harvest Generation Church</span>
-    <a href="#collection" class="header-cta">View Collection</a>
+    <button type="button" class="brand-button" data-go-view="shop" aria-label="Return to shop">
+      <span class="brand-mark" aria-hidden="true">20</span>
+      <span class="brand-copy"><strong>Harvest Generation</strong><small>Anniversary Collection</small></span>
+    </button>
+    <button type="button" class="cart-trigger" id="cart-trigger" data-open-cart>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L20.3 8H7M10 20h.01M17 20h.01"/></svg>
+      <span>Cart</span>
+      <span class="cart-count" id="cart-count" aria-label="0 items">0</span>
+    </button>
   </div>
 </header>
 
-<!-- ============ HERO ============ -->
-<section class="hero">
-  <div class="hero-glow" aria-hidden="true"></div>
-  <div class="wrap hero-inner">
-    <p class="hero-eyebrow">Harvest Generation Church</p>
-    <h1 class="hero-title">20th Anniversary<br>Apparel</h1>
-    <p class="hero-message">Celebrating 20 years of being discipled to make disciples.</p>
-    <a href="#collection" class="btn btn-primary hero-btn">View Collection</a>
-  </div>
-</section>
-
-<!-- ============ PRODUCT COLLECTION ============ -->
-<main>
-<section id="collection" class="collection wrap">
-  <h2 class="section-title">The Collection</h2>
-  <p class="section-subtitle">Four ways to mark the anniversary — for every member of the family.</p>
-
-  {% if errors %}
-  <div class="alert alert-error" role="alert" tabindex="-1" id="form-errors">
-    <p class="alert-title">Please fix the following before submitting:</p>
-    <ul>
-      {% for err in errors %}<li>{{ err }}</li>{% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
-  <form action="{{ url_for('submit_order') }}" method="POST" enctype="multipart/form-data" id="order-form" novalidate>
-
-    <div class="product-grid">
-      {% for pid, p in products.items() %}
-      <article class="product-card" data-product-id="{{ pid }}" data-price="{{ p.price }}">
-        <div class="product-media">
-          <img src="{{ url_for('static', filename='images/' + p.image) }}"
-               alt="{{ p.name }} — Harvest Generation Church 20th anniversary apparel"
-               loading="lazy">
-        </div>
-
-        <div class="product-body">
-          <p class="product-category">{{ p.category }}</p>
-          <h3 class="product-name">{{ p.name }}</h3>
-          <p class="product-price">{{ p.price | ringgit }}</p>
-
-          {% if p.note %}
-          <p class="product-note {% if 'may arrive' in p.note %}product-note--warning{% endif %}">{{ p.note }}</p>
-          {% endif %}
-
-          <button type="button" class="btn btn-ghost size-guide-btn"
-                  data-image="{{ url_for('static', filename='images/' + p.size_guide_image) }}"
-                  data-alt="{{ p.name }} size guide">
-            View Size Guide
-          </button>
-
-          <div class="field-group">
-            <label class="field-label" for="size_{{ pid }}">Size</label>
-            <select name="size_{{ pid }}" id="size_{{ pid }}" class="size-select" aria-describedby="size-help-{{ pid }}">
-              <option value="">Select a size&hellip;</option>
-              {% for s in p.sizes %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-            </select>
-            <p class="field-hint" id="size-help-{{ pid }}">Required when quantity is above 0</p>
-          </div>
-
-          <div class="field-group">
-            <span class="field-label" id="qty-label-{{ pid }}">Quantity</span>
-            <div class="qty-stepper" role="group" aria-labelledby="qty-label-{{ pid }}">
-              <button type="button" class="qty-btn qty-minus" aria-label="Decrease quantity of {{ p.name }}">&minus;</button>
-              <input type="number" name="qty_{{ pid }}" id="qty_{{ pid }}" class="qty-input"
-                     value="0" min="0" max="20" inputmode="numeric" aria-label="Quantity of {{ p.name }}">
-              <button type="button" class="qty-btn qty-plus" aria-label="Increase quantity of {{ p.name }}">&plus;</button>
-            </div>
-          </div>
-
-          <div class="product-subtotal">
-            <span>Subtotal</span>
-            <span class="subtotal-amount" id="subtotal_{{ pid }}">RM 0.00</span>
+<main id="main-content">
+  <div data-flow-view="shop">
+    <section class="hero">
+      <div class="wrap hero-layout">
+        <div class="hero-copy">
+          <p class="eyebrow">20 years · One family</p>
+          <h1>Made to remember.<br><em>Made to belong.</em></h1>
+          <p class="hero-description">Wear the story of twenty years being discipled to make disciples. Limited anniversary tees and hoodies for every generation.</p>
+          <a href="#collection" class="btn btn-primary">Shop the collection <span aria-hidden="true">↓</span></a>
+          <div class="hero-proof" aria-label="Collection highlights">
+            <span>Limited run</span><i></i><span>Sizes for all ages</span><i></i><span>DuitNow payment</span>
           </div>
         </div>
-      </article>
-      {% endfor %}
-    </div>
-
-    <!-- ============ CUSTOMER DETAILS ============ -->
-    <section class="panel" aria-labelledby="details-heading">
-      <h2 id="details-heading" class="panel-title">Your Details</h2>
-
-      <div class="form-grid">
-        <div class="field-group">
-          <label class="field-label" for="full_name">Full name <span aria-hidden="true">*</span></label>
-          <input type="text" id="full_name" name="full_name" autocomplete="name" required
-                 value="{{ form_data.full_name if form_data else '' }}">
-        </div>
-        <div class="field-group">
-          <label class="field-label" for="email">Email address <span aria-hidden="true">*</span></label>
-          <input type="email" id="email" name="email" autocomplete="email" required
-                 value="{{ form_data.email if form_data else '' }}">
-        </div>
-        <div class="field-group">
-          <label class="field-label" for="phone">Phone number <span aria-hidden="true">*</span></label>
-          <input type="tel" id="phone" name="phone" autocomplete="tel" required
-                 placeholder="e.g. 012-345 6789"
-                 value="{{ form_data.phone if form_data else '' }}">
+        <div class="hero-art" aria-label="Anniversary apparel preview">
+          <div class="hero-photo hero-photo-main"><img src="{{ url_for('static', filename='images/adult.png') }}" alt="Adult HGC anniversary T-shirt" fetchpriority="high"></div>
+          <div class="hero-photo hero-photo-small"><img src="{{ url_for('static', filename='images/cropped_hoodie.png') }}" alt="HGC anniversary cropped hoodie"></div>
+          <span class="year-stamp" aria-hidden="true">2006—2026</span>
         </div>
       </div>
     </section>
 
-    <!-- ============ PAYMENT ============ -->
-    <section class="panel payment-panel" aria-labelledby="payment-heading">
-      <h2 id="payment-heading" class="panel-title">Payment</h2>
+    <section id="collection" class="collection wrap" aria-labelledby="collection-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">The anniversary edit</p><h2 id="collection-title">Find your piece</h2></div>
+        <p>Choose a size, add it to your cart, and mix sizes freely for family and friends.</p>
+      </div>
 
-      <div class="payment-grid">
-        <div class="qr-card">
-          <button type="button" class="qr-zoom-btn" id="qr-zoom-btn" aria-label="Open larger view of the DuitNow QR code">
-            <img src="{{ url_for('static', filename='images/payment_qr.png') }}"
-                 alt="DuitNow QR code for Harvest Generation Church payment" class="qr-image">
-          </button>
-          <p class="qr-caption">Tap the QR code to enlarge</p>
-        </div>
-
-        <div class="payment-info">
-          <dl class="payment-details">
-            <div><dt>Payment method</dt><dd>DuitNow QR</dd></div>
-            <div><dt>Recipient</dt><dd>Harvest Generation Church</dd></div>
-            <div><dt>Currency</dt><dd>Malaysian Ringgit (RM)</dd></div>
-          </dl>
-          <p class="payment-instruction">Please scan the QR code, pay the exact total amount and upload your payment receipt below.</p>
-
-          <div class="grand-total" role="status">
-            <span>Total to pay</span>
-            <span id="grand-total-amount">RM 0.00</span>
+      <div class="product-grid">
+        {% for pid, p in products.items() %}
+        <article class="product-card" data-product-id="{{ pid }}" data-product-name="{{ p.name }}" data-price="{{ p.price }}" data-image="{{ url_for('static', filename='images/' + p.image) }}">
+          <div class="product-media">
+            <img src="{{ url_for('static', filename='images/' + p.image) }}" alt="{{ p.name }}" loading="lazy">
+            <span class="product-chip">{{ 'New' if 'Hoodie' in p.category else 'Anniversary' }}</span>
+            <button type="button" class="quick-guide" data-size-guide data-image="{{ url_for('static', filename='images/' + p.size_guide_image) }}" data-alt="{{ p.name }} size guide">Size guide</button>
           </div>
-
-          <div class="field-group">
-            <label class="field-label" for="payment_proof">Proof of payment <span aria-hidden="true">*</span></label>
-            <div class="file-upload">
-              <input type="file" id="payment_proof" name="payment_proof" accept=".png,.jpg,.jpeg,.pdf" required>
-              <label for="payment_proof" class="file-upload-btn">Choose file</label>
-              <span class="file-upload-name" id="file-upload-name">No file selected</span>
+          <div class="product-body">
+            <p class="product-category">{{ p.category }}</p>
+            <div class="product-title-row"><h3>{{ p.name }}</h3><strong>{{ p.price | ringgit }}</strong></div>
+            <p class="product-note">{{ p.note }}</p>
+            <div class="product-actions">
+              <div class="select-wrap">
+                <label for="picker-{{ pid }}">Size</label>
+                <select id="picker-{{ pid }}" data-size-picker>
+                  <option value="">Select size</option>
+                  {% for s in p.sizes %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                </select>
+              </div>
+              <button type="button" class="btn btn-add" data-add-item>Add to cart</button>
             </div>
-            <p class="field-hint">Accepted formats: PNG, JPG, JPEG, PDF &middot; Maximum size: 8&nbsp;MB</p>
+            <p class="inline-error" data-card-error role="alert" hidden></p>
           </div>
-        </div>
+        </article>
+        {% endfor %}
       </div>
     </section>
 
-    <div class="submit-row">
-      <button type="submit" class="btn btn-primary btn-large" id="submit-order-btn">Submit Order</button>
-    </div>
+    <section class="promise-strip">
+      <div class="wrap promise-grid">
+        <div><span class="promise-icon">01</span><div><strong>Choose your pieces</strong><small>Mix products and sizes in one cart.</small></div></div>
+        <div><span class="promise-icon">02</span><div><strong>Pay with DuitNow</strong><small>Scan once for your exact order total.</small></div></div>
+        <div><span class="promise-icon">03</span><div><strong>Keep your reference</strong><small>Your full summary arrives by email.</small></div></div>
+      </div>
+    </section>
+  </div>
 
-  </form>
-</section>
+  <div class="checkout-view" data-flow-view="checkout" hidden>
+    <div class="wrap checkout-wrap">
+      <button type="button" class="back-to-shop" data-go-view="shop"><span aria-hidden="true">←</span> Continue shopping</button>
+
+      <nav class="checkout-progress" aria-label="Checkout progress">
+        <button type="button" data-step-target="cart"><span>1</span><strong>Cart</strong><small>Review order</small></button>
+        <i aria-hidden="true"></i>
+        <button type="button" data-step-target="details"><span>2</span><strong>Details</strong><small>About you</small></button>
+        <i aria-hidden="true"></i>
+        <button type="button" data-step-target="payment"><span>3</span><strong>Payment</strong><small>Pay & submit</small></button>
+      </nav>
+
+      {% if errors %}
+      <div class="alert alert-error" role="alert" tabindex="-1" id="form-errors">
+        <strong>We need a little more information</strong>
+        <ul>{% for err in errors %}<li>{{ err }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+
+      <form action="{{ url_for('submit_order') }}" method="POST" enctype="multipart/form-data" id="order-form" novalidate>
+        <input type="hidden" name="cart_json" id="cart-json" value="{{ form_data.get('cart_json', '[]') }}">
+
+        <section class="checkout-step" data-checkout-step="cart" aria-labelledby="cart-heading">
+          <div class="checkout-heading"><p class="eyebrow">Step 1 of 3</p><h1 id="cart-heading">Your cart</h1><p>Review sizes and quantities before moving on.</p></div>
+          <div class="checkout-grid">
+            <div class="checkout-card cart-card">
+              <div id="cart-lines" class="cart-lines"></div>
+              <div id="empty-cart" class="empty-cart">
+                <span aria-hidden="true">🛍</span><h2>Your cart is waiting</h2><p>Add an anniversary piece to get started.</p>
+                <button type="button" class="btn btn-secondary" data-go-view="shop">Browse collection</button>
+              </div>
+            </div>
+            <aside class="summary-card" aria-labelledby="cart-summary-title">
+              <h2 id="cart-summary-title">Order summary</h2>
+              <div class="summary-row"><span>Items</span><span id="summary-item-count">0</span></div>
+              <div class="summary-row total"><span>Total</span><strong data-cart-total>RM 0.00</strong></div>
+              <p class="summary-note">Payment is collected in Malaysian Ringgit via DuitNow.</p>
+              <button type="button" class="btn btn-primary btn-block" data-next-step="details">Continue to details <span aria-hidden="true">→</span></button>
+            </aside>
+          </div>
+        </section>
+
+        <section class="checkout-step" data-checkout-step="details" aria-labelledby="details-heading" hidden>
+          <div class="checkout-heading"><p class="eyebrow">Step 2 of 3</p><h1 id="details-heading">Your details</h1><p>We’ll use these details for your confirmation and collection updates.</p></div>
+          <div class="checkout-grid">
+            <div class="checkout-card details-card">
+              <div class="field-group field-full">
+                <label for="full_name">Full name <span>*</span></label>
+                <input type="text" id="full_name" name="full_name" autocomplete="name" required minlength="2" placeholder="As you’d like it on your order" value="{{ form_data.get('full_name', '') }}">
+                <p class="field-error" data-error-for="full_name"></p>
+              </div>
+              <div class="field-group">
+                <label for="email">Email address <span>*</span></label>
+                <input type="email" id="email" name="email" autocomplete="email" required placeholder="you@example.com" value="{{ form_data.get('email', '') }}">
+                <small>Your receipt and order reference go here.</small>
+                <p class="field-error" data-error-for="email"></p>
+              </div>
+              <div class="field-group">
+                <label for="phone">Contact number <span>*</span></label>
+                <input type="tel" id="phone" name="phone" autocomplete="tel" required inputmode="tel" pattern="[0-9+()\- ]{7,20}" placeholder="e.g. 012-345 6789" value="{{ form_data.get('phone', '') }}">
+                <small>For order or collection questions only.</small>
+                <p class="field-error" data-error-for="phone"></p>
+              </div>
+              <div class="privacy-note"><span aria-hidden="true">✓</span><p><strong>Your details stay with your order.</strong><br>We only use them to confirm and coordinate this purchase.</p></div>
+            </div>
+            <aside class="summary-card compact-summary">
+              <h2>Order summary</h2>
+              <div class="mini-lines" data-mini-cart></div>
+              <div class="summary-row total"><span>Total</span><strong data-cart-total>RM 0.00</strong></div>
+              <button type="button" class="btn btn-primary btn-block" data-next-step="payment">Continue to payment <span aria-hidden="true">→</span></button>
+              <button type="button" class="text-button" data-step-target="cart">Back to cart</button>
+            </aside>
+          </div>
+        </section>
+
+        <section class="checkout-step" data-checkout-step="payment" aria-labelledby="payment-heading" hidden>
+          <div class="checkout-heading"><p class="eyebrow">Step 3 of 3</p><h1 id="payment-heading">Payment</h1><p>Pay the exact amount, attach your receipt, and you’re done.</p></div>
+          <div class="checkout-grid payment-layout">
+            <div class="checkout-card payment-card">
+              <div class="payment-topline"><div><span class="secure-dot"></span><strong>DuitNow QR</strong></div><span>One-time payment</span></div>
+              <div class="payment-content">
+                <button type="button" class="qr-zoom-btn" id="qr-zoom-btn" aria-label="Enlarge the DuitNow QR code">
+                  <img src="{{ url_for('static', filename='images/payment_qr.png') }}" alt="Harvest Generation Church DuitNow payment QR code">
+                  <span>Tap to enlarge</span>
+                </button>
+                <div class="payment-instructions">
+                  <p class="payment-label">Amount to transfer</p>
+                  <strong class="payment-amount" data-cart-total>RM 0.00</strong>
+                  <ol><li>Open your banking or e-wallet app.</li><li>Scan the QR code and pay the exact amount.</li><li>Save the receipt and upload it below.</li></ol>
+                  <dl><div><dt>Recipient</dt><dd>Harvest Generation Church</dd></div><div><dt>Currency</dt><dd>MYR</dd></div></dl>
+                </div>
+              </div>
+              <div class="upload-area" id="upload-area">
+                <input type="file" id="payment_proof" name="payment_proof" accept=".png,.jpg,.jpeg,.pdf" required>
+                <label for="payment_proof">
+                  <span class="upload-icon" aria-hidden="true">↑</span>
+                  <span><strong id="file-upload-title">Upload payment proof</strong><small id="file-upload-name">PNG, JPG or PDF · up to 8 MB</small></span>
+                  <span class="btn btn-secondary">Choose file</span>
+                </label>
+                <p class="field-error" id="payment-proof-error"></p>
+              </div>
+            </div>
+            <aside class="summary-card compact-summary">
+              <h2>Final order</h2>
+              <div class="mini-lines" data-mini-cart></div>
+              <div class="customer-recap"><span>Confirmation to</span><strong id="recap-email">—</strong><small id="recap-phone">—</small></div>
+              <div class="summary-row total"><span>Order amount</span><strong data-cart-total>RM 0.00</strong></div>
+              <button type="submit" class="btn btn-primary btn-block btn-submit" id="submit-order-btn"><span>Submit order</span><span aria-hidden="true">→</span></button>
+              <p class="submit-note">By submitting, you confirm the order details and payment proof are correct.</p>
+              <button type="button" class="text-button" data-step-target="details">Back to details</button>
+            </aside>
+          </div>
+        </section>
+      </form>
+    </div>
+  </div>
 </main>
 
-<!-- ============ SIZE GUIDE MODAL ============ -->
-<div class="modal" id="size-guide-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+<div class="toast" id="cart-toast" role="status" aria-live="polite" hidden><span aria-hidden="true">✓</span><span id="toast-message">Added to cart</span><button type="button" data-open-cart>View cart</button></div>
+
+<div class="modal" id="image-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
   <div class="modal-backdrop" data-close-modal></div>
   <div class="modal-content">
-    <button type="button" class="modal-close" data-close-modal aria-label="Close size guide">&times;</button>
-    <h2 class="modal-title" id="modal-title">Size Guide</h2>
-    <div class="modal-image-wrap">
-      <img src="" alt="" id="modal-image">
-    </div>
-  </div>
-</div>
-
-<!-- ============ QR ZOOM MODAL ============ -->
-<div class="modal" id="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title" hidden>
-  <div class="modal-backdrop" data-close-modal></div>
-  <div class="modal-content modal-content--qr">
-    <button type="button" class="modal-close" data-close-modal aria-label="Close QR code view">&times;</button>
-    <h2 class="modal-title" id="qr-modal-title">Scan to Pay — DuitNow</h2>
-    <div class="modal-image-wrap">
-      <img src="{{ url_for('static', filename='images/payment_qr.png') }}" alt="DuitNow QR code for Harvest Generation Church payment, enlarged">
-    </div>
+    <button type="button" class="modal-close" data-close-modal aria-label="Close image">×</button>
+    <h2 id="modal-title">Size guide</h2>
+    <img src="" alt="" id="modal-image">
   </div>
 </div>
 
 <footer class="site-footer">
-  <div class="wrap">
-    <p>Harvest Generation Church &middot; 20th Anniversary Apparel</p>
-  </div>
+  <div class="wrap footer-inner"><div><strong>HGC · 20</strong><span>Anniversary Collection</span></div><p>Celebrating twenty years of faith, family and discipleship.</p></div>
 </footer>
 
 <script src="{{ url_for('static', filename='js/script.js') }}"></script>
