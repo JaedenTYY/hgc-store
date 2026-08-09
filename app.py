@@ -8,7 +8,9 @@ Run with:  python app.py
 See README.md for full setup instructions.
 """
 
+import base64
 import json
+import mimetypes
 import os
 import re
 import smtplib
@@ -17,6 +19,8 @@ import uuid
 from datetime import datetime
 from email.message import EmailMessage
 from html import escape
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from dotenv import load_dotenv
 
@@ -149,6 +153,12 @@ EMAIL_IS_CONFIGURED = (
     and bool(SMTP_PASSWORD) and SMTP_PASSWORD != "INSERT_EMAIL_APP_PASSWORD_HERE"
 )
 
+GOOGLE_SHEETS_WEBHOOK_URL = os.environ.get("GOOGLE_SHEETS_WEBHOOK_URL")
+GOOGLE_SHEETS_WEBHOOK_SECRET = os.environ.get("GOOGLE_SHEETS_WEBHOOK_SECRET")
+GOOGLE_SHEETS_SYNC_IS_CONFIGURED = bool(
+    GOOGLE_SHEETS_WEBHOOK_URL and GOOGLE_SHEETS_WEBHOOK_SECRET
+)
+
 
 def google_form_is_configured():
     return bool(GOOGLE_FORM_URL) and GOOGLE_FORM_URL != "INSERT_PUBLISHED_GOOGLE_FORM_URL_HERE"
@@ -261,6 +271,82 @@ def send_order_confirmation_email(order_record):
         return False
 
 
+def sync_order_to_google_sheet(order_record, proof_path):
+    """
+    Send a completed order and its payment proof to the configured Google
+    Apps Script web app. The web app stores the proof in Drive and appends
+    one order row to the shared Sheet.
+
+    This is best-effort: local JSON and upload storage remain the durable
+    fallback if Google is unavailable. The returned status is persisted on
+    the order so an administrator can safely retry later.
+    """
+    if not GOOGLE_SHEETS_SYNC_IS_CONFIGURED:
+        print(
+            f"[sheets] Google Sheets not configured — order "
+            f"{order_record['order_reference']} remains saved locally."
+        )
+        return {"status": "not_configured"}
+
+    try:
+        with open(proof_path, "rb") as proof_file:
+            proof_base64 = base64.b64encode(proof_file.read()).decode("ascii")
+
+        proof_filename = order_record["payment_proof_filename"]
+        proof_content_type = (
+            mimetypes.guess_type(proof_filename)[0] or "application/octet-stream"
+        )
+        payload = {
+            "secret": GOOGLE_SHEETS_WEBHOOK_SECRET,
+            "order": {
+                "order_reference": order_record["order_reference"],
+                "submitted_at": order_record["submitted_at"],
+                "customer": order_record["customer"],
+                "order_items": order_record["order_items"],
+                "total": order_record["total"],
+            },
+            "payment_proof": {
+                "filename": proof_filename,
+                "content_type": proof_content_type,
+                "base64": proof_base64,
+            },
+        }
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        sheet_request = urllib_request.Request(
+            GOOGLE_SHEETS_WEBHOOK_URL,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib_request.urlopen(sheet_request, timeout=25) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+
+        if not response_payload.get("ok"):
+            raise ValueError(response_payload.get("error") or "Google Sheet rejected order")
+
+        return {
+            "status": "synced",
+            "synced_at": datetime.now().isoformat(timespec="seconds"),
+            "payment_proof_url": response_payload.get("payment_proof_url"),
+            "duplicate": bool(response_payload.get("duplicate")),
+        }
+    except (
+        OSError,
+        TimeoutError,
+        ValueError,
+        json.JSONDecodeError,
+        urllib_error.URLError,
+    ) as exc:
+        print(
+            f"[sheets] Failed to sync order {order_record['order_reference']}: {exc}"
+        )
+        return {
+            "status": "failed",
+            "failed_at": datetime.now().isoformat(timespec="seconds"),
+            "error": str(exc)[:240],
+        }
+
+
 # --------------------------------------------------------------------
 # Folders & upload configuration
 # --------------------------------------------------------------------
@@ -291,6 +377,14 @@ def to_ringgit(amount):
 
 
 app.jinja_env.filters["ringgit"] = to_ringgit
+
+
+def save_order_record(order_path, order_record):
+    """Atomically persist an order so interrupted writes cannot corrupt it."""
+    temporary_path = f"{order_path}.{uuid.uuid4().hex}.tmp"
+    with open(temporary_path, "w", encoding="utf-8") as order_file:
+        json.dump(order_record, order_file, indent=2, ensure_ascii=False)
+    os.replace(temporary_path, order_path)
 
 
 # --------------------------------------------------------------------
@@ -433,7 +527,8 @@ def submit_order():
     # customer's original filename (avoids collisions / info leaks).
     original_ext = proof_file.filename.rsplit(".", 1)[1].lower()
     stored_filename = secure_filename(f"{order_ref}.{original_ext}")
-    proof_file.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_filename))
+    proof_path = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
+    proof_file.save(proof_path)
 
     order_record = {
         "order_reference": order_ref,
@@ -449,8 +544,17 @@ def submit_order():
     }
 
     order_path = os.path.join(ORDERS_FOLDER, f"{order_ref}.json")
-    with open(order_path, "w", encoding="utf-8") as f:
-        json.dump(order_record, f, indent=2, ensure_ascii=False)
+    save_order_record(order_path, order_record)
+
+    # Best-effort: send the order to the shared Google Sheet. The local
+    # record is written first, so an outage or bad webhook never loses the
+    # customer's order. Apps Script rejects duplicate order references,
+    # making later retries safe.
+    order_record["google_sheet_sync"] = sync_order_to_google_sheet(
+        order_record,
+        proof_path,
+    )
+    save_order_record(order_path, order_record)
 
     # Best-effort: email the customer a copy of their order. If this
     # fails (e.g. SMTP not configured yet), the order itself has still
@@ -465,6 +569,42 @@ def submit_order():
         google_form_url=GOOGLE_FORM_URL,
         email_sent=email_sent,
     )
+
+
+@app.cli.command("sync-google-sheet")
+def sync_google_sheet_command():
+    """Retry locally saved orders that have not reached Google Sheets."""
+    if not GOOGLE_SHEETS_SYNC_IS_CONFIGURED:
+        print(
+            "Google Sheets is not configured. Set GOOGLE_SHEETS_WEBHOOK_URL "
+            "and GOOGLE_SHEETS_WEBHOOK_SECRET first."
+        )
+        return
+
+    synced_count = 0
+    failed_count = 0
+    for filename in sorted(os.listdir(ORDERS_FOLDER)):
+        if not filename.endswith(".json"):
+            continue
+        order_path = os.path.join(ORDERS_FOLDER, filename)
+        with open(order_path, encoding="utf-8") as order_file:
+            order_record = json.load(order_file)
+        if order_record.get("google_sheet_sync", {}).get("status") == "synced":
+            continue
+
+        proof_path = os.path.join(
+            app.config["UPLOAD_FOLDER"],
+            order_record["payment_proof_filename"],
+        )
+        result = sync_order_to_google_sheet(order_record, proof_path)
+        order_record["google_sheet_sync"] = result
+        save_order_record(order_path, order_record)
+        if result["status"] == "synced":
+            synced_count += 1
+        else:
+            failed_count += 1
+
+    print(f"Google Sheet sync complete: {synced_count} synced, {failed_count} failed.")
 
 
 # --------------------------------------------------------------------

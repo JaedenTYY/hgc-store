@@ -78,7 +78,7 @@ static/images/payment_qr.png       — Harvest Generation Church DuitNow QR
 ```
 
 The site already ships with these files in place. If you ever need to
-replace one (see section 8 below), just overwrite the file — no code
+replace one (see section 11 below), just overwrite the file — no code
 changes needed as long as the filename stays the same.
 
 ## 5. Where to change product prices
@@ -165,7 +165,63 @@ couldn't be sent, so no order is ever lost.
 ⚠️ Keep `SMTP_PASSWORD` private. The included `.gitignore` excludes `.env`;
 do not force-add that file to Git.
 
-## 8. Where submitted orders are stored
+## 8. Send orders to a shared Google Sheet
+
+The checkout can send every completed order to an `Orders` tab in a shared
+Google Sheet. Payment proofs are copied to a Google Drive folder and the
+sheet receives a clickable Drive link—not an inaccessible server filename.
+
+The integration uses a Google Apps Script web app. Google documents that a
+web app receives POST requests through `doPost(e)`, and that Sheets supports
+appending rows through `appendRow(...)`:
+
+- [Google Apps Script web apps](https://developers.google.com/apps-script/guides/web)
+- [Google Sheets `appendRow`](https://developers.google.com/apps-script/reference/spreadsheet/sheet#appendrowrowcontents)
+
+### One-time Google setup
+
+1. Create or open the Google Sheet that the church team will share.
+2. In that Sheet, select **Extensions → Apps Script**.
+3. Replace the contents of `Code.gs` with the supplied
+   [`google_apps_script/Code.gs`](google_apps_script/Code.gs) file.
+4. Select `setupIntegration` in the Apps Script toolbar and click **Run**.
+   Approve the requested Sheets and Drive permissions. This creates:
+   - an `Orders` tab with the required columns;
+   - an `HGC Payment Proofs` folder in the script owner's Google Drive;
+   - a private webhook secret.
+5. Open the Apps Script execution log and copy the value printed after
+   `GOOGLE_SHEETS_WEBHOOK_SECRET=`. It also prints the payment-proof folder
+   URL; share that folder with the same administrators who can access the
+   order sheet.
+6. Select **Deploy → New deployment → Web app**. Set **Execute as** to
+   **Me**, set **Who has access** to **Anyone** (not “Anyone within your
+   organization”), and deploy it. Copy the `/exec` URL—not the testing
+   `/dev` URL. A working public URL normally starts with
+   `https://script.google.com/macros/s/` and does not contain
+   `/a/macros/your-domain/`.
+7. Add the deployment URL and secret to `.env`:
+
+   ```dotenv
+   GOOGLE_SHEETS_WEBHOOK_URL=https://script.google.com/macros/s/your-deployment-id/exec
+   GOOGLE_SHEETS_WEBHOOK_SECRET=the-secret-printed-by-setupIntegration
+   ```
+
+8. Restart Flask. New orders will now appear automatically in `Orders` with
+   these columns: order reference, submitted time, name, email, contact
+   number, order details, order amount, payment-proof link, payment status,
+   and sync time.
+
+The local JSON order is always saved before Google is contacted. If Google
+is temporarily unavailable, retry every unsynced order safely with:
+
+```bash
+python3 -m flask --app app sync-google-sheet
+```
+
+The Apps Script checks order references before inserting, so retries do not
+create duplicate spreadsheet rows.
+
+## 9. Where submitted orders are stored
 
 Every completed order is saved as a JSON file in the **`orders/`**
 folder, named after its order reference, e.g.:
@@ -178,7 +234,7 @@ Each file contains the customer's name, email, phone, every product/size/
 quantity/subtotal, the server-calculated final total, and the stored
 filename of their payment proof.
 
-## 9. Where payment proofs are stored
+## 10. Where payment proofs are stored
 
 Uploaded proof-of-payment files are saved in the **`uploads/`** folder,
 renamed to the order reference (e.g. `HGC20-20260809-4F2A9B1C.jpg`) —
@@ -187,7 +243,7 @@ served publicly by the website (there is no working URL that lets a
 visitor browse or download it), so payment receipts stay private. Only
 someone with direct access to the server's files can open them.
 
-## 10. How to replace a product or size-chart image without touching the code
+## 11. How to replace a product or size-chart image without touching the code
 
 1. Prepare your new image.
 2. Rename it to match the filename it's replacing exactly (e.g. `adult.png`).
@@ -198,7 +254,7 @@ If you want to add a **new** product image under a different filename,
 you'll need to also add one line to the `PRODUCTS` dictionary in
 `app.py` pointing at the new filename.
 
-## 11. Project structure
+## 12. Project structure
 
 ```
 hgc-store/
@@ -206,6 +262,8 @@ hgc-store/
 ├── requirements.txt           — Python dependencies
 ├── README.md                  — this file
 ├── .env.example               — safe template for local configuration
+├── google_apps_script/
+│   └── Code.gs                — secured Sheets + Drive webhook
 ├── templates/
 │   ├── index.html             — storefront and guided checkout
 │   └── success.html           — order confirmation page
@@ -218,7 +276,7 @@ hgc-store/
 └── tests/test_checkout.py     — checkout and order-processing regression tests
 ```
 
-## 12. A note on trust and security
+## 13. A note on trust and security
 
 - The browser calculates subtotals/total live so customers see prices
   instantly, but **the server never trusts those numbers**. `app.py`
@@ -230,3 +288,6 @@ hgc-store/
   both places.
 - Uploaded files are restricted to PNG, JPG, JPEG, and PDF, capped at
   8 MB, and are never saved under the customer's original filename.
+- The Google Apps Script endpoint requires a long shared secret, rejects
+  duplicate order references, and neutralizes formula-like customer input
+  before writing it to spreadsheet cells.
