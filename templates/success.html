@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Confirmed — Harvest Generation Church</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <span class="brand">Harvest Generation Church</span>
+  </div>
+</header>
+
+<main class="wrap success-wrap">
+  <section class="success-card">
+    <div class="success-icon" aria-hidden="true">&#10003;</div>
+    <h1 class="success-title">Order submitted successfully</h1>
+    <p class="success-sub">Thank you, {{ order.customer.full_name }} — we've received your order.</p>
+
+    <div class="order-ref-box">
+      <span class="order-ref-label">Order reference</span>
+      <span class="order-ref-value">{{ order.order_reference }}</span>
+    </div>
+
+    <div class="order-details">
+      <h2 class="panel-title">Order Summary</h2>
+      <table class="order-table">
+        <thead>
+          <tr>
+            <th scope="col">Product</th>
+            <th scope="col">Size</th>
+            <th scope="col">Qty</th>
+            <th scope="col">Unit Price</th>
+            <th scope="col">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in order.order_items %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.size }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.unit_price | ringgit }}</td>
+            <td>{{ item.subtotal | ringgit }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" class="total-label">Final total paid</td>
+            <td class="total-amount">{{ order.total | ringgit }}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <p class="proof-confirm">&#10003; Proof of payment received and saved to your order.</p>
+
+      {% if email_sent %}
+      <p class="proof-confirm">&#10003; A copy of this order summary has been emailed to {{ order.customer.email }}.</p>
+      {% else %}
+      <p class="email-warning">We couldn't send a confirmation email to {{ order.customer.email }} right now — please keep your order reference above for your records.</p>
+      {% endif %}
+    </div>
+
+    <div class="success-actions">
+      <a href="{{ google_form_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-large">
+        Continue to Google Order Form
+      </a>
+      <a href="{{ url_for('index') }}" class="btn btn-ghost btn-large">Return to Apparel Store</a>
+    </div>
+
+    {% if google_form_url == "INSERT_PUBLISHED_GOOGLE_FORM_URL_HERE" %}
+    <p class="form-notice">Note to site admin: set <code>GOOGLE_FORM_URL</code> in <code>app.py</code> to your published Google Form link.</p>
+    {% endif %}
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>Harvest Generation Church &middot; 20th Anniversary Apparel</p>
+  </div>
+</footer>
+
+</body>
+</html>
