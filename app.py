@@ -181,12 +181,16 @@ def send_order_confirmation_email(order_record):
         return False
 
     customer = order_record["customer"]
+    safe_customer_name = escape(customer["full_name"])
+    safe_customer_email = escape(customer["email"])
+    safe_customer_phone = escape(customer["phone"])
+    safe_order_reference = escape(order_record["order_reference"])
 
     # ---- Plain-text body (always included as a fallback) -------------
     lines = [
         f"Hi {customer['full_name']},",
         "",
-        "Thank you for your order! Here is a summary:",
+        "Thank you — we've received your anniversary apparel order.",
         "",
         f"Order reference: {order_record['order_reference']}",
         "",
@@ -200,9 +204,10 @@ def send_order_confirmation_email(order_record):
         )
     lines += [
         "",
-        f"Total paid: {to_ringgit(order_record['total'])}",
+        f"Order amount: {to_ringgit(order_record['total'])}",
         "",
-        "We've received your proof of payment and will verify it shortly.",
+        "Your payment proof was received and is pending verification.",
+        "We'll contact you using the details provided when there is an update.",
         "",
         "God bless,",
         "Harvest Generation Church",
@@ -214,46 +219,213 @@ def send_order_confirmation_email(order_record):
         ]
     text_body = "\n".join(lines)
 
-    # ---- Simple HTML body ------------------------------------------
+    # ---- Email-client-safe HTML body -------------------------------
     rows_html = "".join(
-        f"<tr>"
-        f"<td style='padding:6px 10px;border-bottom:1px solid #dfe6f2;'>{item['name']}</td>"
-        f"<td style='padding:6px 10px;border-bottom:1px solid #dfe6f2;'>{item['size']}</td>"
-        f"<td style='padding:6px 10px;border-bottom:1px solid #dfe6f2;text-align:center;'>{item['quantity']}</td>"
-        f"<td style='padding:6px 10px;border-bottom:1px solid #dfe6f2;text-align:right;'>{to_ringgit(item['unit_price'])}</td>"
-        f"<td style='padding:6px 10px;border-bottom:1px solid #dfe6f2;text-align:right;'>{to_ringgit(item['subtotal'])}</td>"
+        f"<tr><td style='padding:18px 0;border-bottom:1px solid #e4e8e4;'>"
+        f"<table role='presentation' width='100%' cellspacing='0' cellpadding='0' border='0'>"
+        f"<tr><td style='padding-right:12px;vertical-align:top;'>"
+        f"<div style='font-size:15px;line-height:21px;font-weight:700;color:#17372b;'>"
+        f"{escape(item['name'])}</div>"
+        f"<div style='padding-top:5px;font-size:12px;line-height:18px;color:#6b766f;'>"
+        f"Size {escape(item['size'])}&nbsp;&nbsp;·&nbsp;&nbsp;Qty {item['quantity']}"
+        f"&nbsp;&nbsp;·&nbsp;&nbsp;{to_ringgit(item['unit_price'])} each</div>"
+        f"</td><td width='100' style='vertical-align:top;text-align:right;white-space:nowrap;"
+        f"font-size:14px;line-height:21px;font-weight:700;color:#17372b;'>"
+        f"{to_ringgit(item['subtotal'])}</td></tr></table></td>"
         f"</tr>"
         for item in order_record["order_items"]
     )
-    html_body = f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;color:#2a3550;max-width:560px;margin:0 auto;">
-      <h2 style="color:#1b2a4a;">Order Confirmed — Harvest Generation Church</h2>
-      <p>Hi {escape(customer['full_name'])},</p>
-      <p>Thank you for your order! Here is a summary:</p>
-      <p><strong>Order reference:</strong> {order_record['order_reference']}</p>
-      <table style="border-collapse:collapse;width:100%;font-size:14px;">
-        <thead>
-          <tr style="text-align:left;color:#5b6685;">
-            <th style="padding:6px 10px;border-bottom:2px solid #1b2a4a;">Product</th>
-            <th style="padding:6px 10px;border-bottom:2px solid #1b2a4a;">Size</th>
-            <th style="padding:6px 10px;border-bottom:2px solid #1b2a4a;">Qty</th>
-            <th style="padding:6px 10px;border-bottom:2px solid #1b2a4a;">Unit Price</th>
-            <th style="padding:6px 10px;border-bottom:2px solid #1b2a4a;">Subtotal</th>
+
+    form_button_html = ""
+    if google_form_is_configured():
+        form_button_html = f"""
+          <tr>
+            <td align="center" style="padding:0 36px 34px;">
+              <a href="{escape(GOOGLE_FORM_URL, quote=True)}"
+                 style="display:inline-block;padding:13px 22px;border:1px solid #cbd5ce;
+                        border-radius:999px;color:#17372b;text-decoration:none;
+                        font-size:13px;font-weight:700;">
+                Complete the official order form
+              </a>
+            </td>
           </tr>
-        </thead>
-        <tbody>{rows_html}</tbody>
-      </table>
-      <p style="text-align:right;font-size:16px;font-weight:bold;color:#1b2a4a;margin-top:10px;">
-        Total paid: {to_ringgit(order_record['total'])}
-      </p>
-      <p>We've received your proof of payment and will verify it shortly.</p>
-      {f'<p><a href="{escape(GOOGLE_FORM_URL, quote=True)}">Complete the official order form</a></p>' if google_form_is_configured() else ''}
-      <p>God bless,<br>Harvest Generation Church</p>
-    </div>
+        """
+
+    html_body = f"""
+    <!doctype html>
+    <html lang="en">
+      <head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+      <body style="margin:0;padding:0;background:#f3f1e9;">
+        <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+          We received your HGC anniversary apparel order · {safe_order_reference}
+        </div>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+               style="width:100%;background:#f3f1e9;">
+          <tr>
+            <td align="center" style="padding:32px 14px;">
+              <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
+                     style="width:100%;max-width:620px;background:#fffefa;border-radius:22px;
+                            overflow:hidden;box-shadow:0 14px 40px rgba(23,55,43,.10);">
+                <tr>
+                  <td style="padding:30px 36px;background:#17372b;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="54" style="vertical-align:middle;">
+                          <div style="width:48px;height:48px;border-radius:50%;background:#f3f1e9;
+                                      color:#17372b;text-align:center;font-size:16px;line-height:48px;
+                                      font-weight:800;">20</div>
+                        </td>
+                        <td style="padding-left:12px;color:#ffffff;vertical-align:middle;">
+                          <div style="font-size:15px;line-height:20px;font-weight:700;">
+                            Harvest Generation
+                          </div>
+                          <div style="font-size:11px;line-height:17px;color:#b9cbbf;">
+                            Anniversary Collection
+                          </div>
+                        </td>
+                        <td align="right" style="color:#a8c8b4;font-size:11px;line-height:16px;
+                                                  text-transform:uppercase;letter-spacing:1px;">
+                          Order received
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:42px 36px 28px;">
+                    <div style="display:inline-block;padding:7px 11px;border-radius:999px;
+                                background:#eaf4ed;color:#287a4c;font-size:11px;font-weight:700;
+                                letter-spacing:.5px;text-transform:uppercase;">
+                      ✓ Payment proof received
+                    </div>
+                    <h1 style="margin:20px 0 12px;color:#102a20;font-size:32px;line-height:38px;
+                               letter-spacing:-1px;">
+                      Thank you, {safe_customer_name}.
+                    </h1>
+                    <p style="margin:0;color:#637168;font-size:15px;line-height:24px;">
+                      Your anniversary apparel order is safely with us. We'll verify your payment
+                      proof and contact you when there is an update.
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 36px 30px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                           style="background:#f7f4ec;border:1px solid #e5e1d7;border-radius:14px;">
+                      <tr>
+                        <td style="padding:17px 20px;">
+                          <div style="font-size:10px;line-height:15px;color:#7c857f;font-weight:700;
+                                      text-transform:uppercase;letter-spacing:1px;">Order reference</div>
+                          <div style="padding-top:3px;color:#17372b;font-size:18px;line-height:24px;
+                                      font-family:Courier New,monospace;font-weight:700;">
+                            {safe_order_reference}
+                          </div>
+                        </td>
+                        <td align="right" style="padding:17px 20px;color:#7c857f;font-size:11px;
+                                                  line-height:16px;vertical-align:middle;">
+                          Keep this for<br>order questions
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 36px 30px;">
+                    <div style="padding-bottom:8px;color:#17372b;font-size:17px;line-height:24px;
+                                font-weight:700;">Your order</div>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      {rows_html}
+                      <tr>
+                        <td style="padding:22px 0 0;">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                                 style="background:#17372b;border-radius:13px;">
+                            <tr>
+                              <td style="padding:18px 20px;color:#d8e6dd;font-size:13px;line-height:20px;">
+                                Order amount
+                              </td>
+                              <td align="right" style="padding:18px 20px;color:#ffffff;font-size:22px;
+                                                        line-height:26px;font-weight:800;">
+                                {to_ringgit(order_record['total'])}
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:28px 36px;background:#edf4ef;border-top:1px solid #dce7df;">
+                    <div style="padding-bottom:18px;color:#17372b;font-size:16px;line-height:22px;
+                                font-weight:700;">What happens next?</div>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="36" style="padding-bottom:15px;vertical-align:top;">
+                          <div style="width:28px;height:28px;border-radius:50%;background:#287a4c;
+                                      color:#fff;text-align:center;line-height:28px;font-size:11px;">✓</div>
+                        </td>
+                        <td style="padding:3px 0 15px;color:#59675e;font-size:13px;line-height:19px;">
+                          <strong style="color:#17372b;">Order received</strong><br>
+                          Your details and payment proof have been submitted.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td width="36" style="padding-bottom:15px;vertical-align:top;">
+                          <div style="width:28px;height:28px;border-radius:50%;background:#d5e3d9;
+                                      color:#17372b;text-align:center;line-height:28px;font-size:11px;
+                                      font-weight:700;">2</div>
+                        </td>
+                        <td style="padding:3px 0 15px;color:#59675e;font-size:13px;line-height:19px;">
+                          <strong style="color:#17372b;">Payment verification</strong><br>
+                          Our team will review the uploaded receipt.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td width="36" style="vertical-align:top;">
+                          <div style="width:28px;height:28px;border-radius:50%;background:#d5e3d9;
+                                      color:#17372b;text-align:center;line-height:28px;font-size:11px;
+                                      font-weight:700;">3</div>
+                        </td>
+                        <td style="padding-top:3px;color:#59675e;font-size:13px;line-height:19px;">
+                          <strong style="color:#17372b;">Collection update</strong><br>
+                          We'll contact you when your order is ready.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:28px 36px 24px;">
+                    <div style="padding-bottom:14px;color:#17372b;font-size:15px;line-height:21px;
+                                font-weight:700;">Confirmation details</div>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                           style="font-size:12px;line-height:19px;">
+                      <tr><td width="80" style="padding:4px 0;color:#869088;">Email</td>
+                          <td style="padding:4px 0;color:#17372b;font-weight:600;">{safe_customer_email}</td></tr>
+                      <tr><td width="80" style="padding:4px 0;color:#869088;">Contact</td>
+                          <td style="padding:4px 0;color:#17372b;font-weight:600;">{safe_customer_phone}</td></tr>
+                    </table>
+                  </td>
+                </tr>
+                {form_button_html}
+                <tr>
+                  <td align="center" style="padding:24px 30px;background:#102a20;color:#9fb5a7;
+                                                   font-size:11px;line-height:18px;">
+                    God bless,<br>
+                    <strong style="color:#ffffff;">Harvest Generation Church</strong><br>
+                    <span style="color:#789183;">Twenty years of faith, family and discipleship.</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
     """
 
     message = EmailMessage()
-    message["Subject"] = f"Order Confirmed — {order_record['order_reference']}"
+    message["Subject"] = f"Order received · {order_record['order_reference']}"
     message["From"] = f"{SENDER_NAME} <{SENDER_EMAIL or SMTP_USERNAME}>"
     message["To"] = customer["email"]
     message.set_content(text_body)

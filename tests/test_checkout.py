@@ -68,6 +68,54 @@ class CheckoutFlowTests(unittest.TestCase):
         self.assertIn("google_sheets_configured", payload)
         self.assertNotIn("GOOGLE_SHEETS_WEBHOOK_SECRET", response.get_data(as_text=True))
 
+    def test_confirmation_email_is_branded_complete_and_html_safe(self):
+        order = {
+            "order_reference": "HGC20-EMAIL",
+            "submitted_at": "2026-08-09T20:00:00",
+            "customer": {
+                "full_name": "Alicia <script>alert(1)</script>",
+                "email": "alicia@example.com",
+                "phone": "+60 12-345 6789",
+            },
+            "order_items": [
+                {
+                    "product_id": "adult_tshirt",
+                    "name": "Adult ‘20’ T-Shirt",
+                    "size": "S",
+                    "quantity": 1,
+                    "unit_price": 55.0,
+                    "subtotal": 55.0,
+                }
+            ],
+            "total": 55.0,
+            "payment_proof_filename": "HGC20-EMAIL.jpg",
+        }
+        smtp_server = MagicMock()
+        smtp_connection = MagicMock()
+        smtp_connection.__enter__.return_value = smtp_server
+
+        configured_patch = patch.object(store, "EMAIL_IS_CONFIGURED", True)
+        username_patch = patch.object(store, "SMTP_USERNAME", "orders@example.com")
+        password_patch = patch.object(store, "SMTP_PASSWORD", "test-password")
+        sender_patch = patch.object(store, "SENDER_EMAIL", "orders@example.com")
+        smtp_patch = patch("app.smtplib.SMTP", return_value=smtp_connection)
+        with configured_patch, username_patch, password_patch, sender_patch, smtp_patch:
+            sent = store.send_order_confirmation_email(order)
+
+        self.assertTrue(sent)
+        message = smtp_server.send_message.call_args.args[0]
+        html = message.get_body(preferencelist=("html",)).get_content()
+        text = message.get_body(preferencelist=("plain",)).get_content()
+        self.assertEqual(message["Subject"], "Order received · HGC20-EMAIL")
+        self.assertIn("Harvest Generation", html)
+        self.assertIn("What happens next?", html)
+        self.assertIn("Payment verification", html)
+        self.assertIn("RM 55.00", html)
+        self.assertIn("alicia@example.com", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("pending verification", text)
+
     def test_valid_order_recalculates_total_saves_proof_email_and_sheet(self):
         email_patch = patch("app.send_order_confirmation_email", return_value=True)
         sheet_patch = patch(
