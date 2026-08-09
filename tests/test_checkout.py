@@ -247,6 +247,34 @@ class CheckoutFlowTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertIn("timed out", result["error"])
 
+    def test_unexpected_google_response_cannot_fail_checkout_sync(self):
+        proof_path = os.path.join(self.uploads_dir, "proof.jpg")
+        with open(proof_path, "wb") as proof_file:
+            proof_file.write(b"receipt")
+        order = {
+            "order_reference": "HGC20-HTML",
+            "submitted_at": "2026-08-09T20:00:00",
+            "customer": {"full_name": "A", "email": "a@example.com", "phone": "01234567"},
+            "order_items": [],
+            "total": 1.0,
+            "payment_proof_filename": "proof.jpg",
+        }
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"<html>Google sign-in</html>"
+        configured_patch = patch.object(store, "GOOGLE_SHEETS_SYNC_IS_CONFIGURED", True)
+        url_patch = patch.object(
+            store, "GOOGLE_SHEETS_WEBHOOK_URL", "https://script.google.test/exec"
+        )
+        secret_patch = patch.object(store, "GOOGLE_SHEETS_WEBHOOK_SECRET", "test-secret")
+        request_patch = patch("app.urllib_request.urlopen", return_value=response)
+
+        with configured_patch, url_patch, secret_patch, request_patch:
+            result = store.sync_order_to_google_sheet(order, proof_path)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("Expecting value", result["error"])
+
     def test_unconfigured_google_sheet_sync_is_skipped_without_network(self):
         order = {"order_reference": "HGC20-LOCAL"}
         configured_patch = patch.object(store, "GOOGLE_SHEETS_SYNC_IS_CONFIGURED", False)

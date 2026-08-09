@@ -19,7 +19,6 @@ import uuid
 from datetime import datetime
 from email.message import EmailMessage
 from html import escape
-from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from dotenv import load_dotenv
@@ -321,6 +320,8 @@ def sync_order_to_google_sheet(order_record, proof_path):
         with urllib_request.urlopen(sheet_request, timeout=25) as response:
             response_payload = json.loads(response.read().decode("utf-8"))
 
+        if not isinstance(response_payload, dict):
+            raise ValueError("Google Sheet returned an unexpected response")
         if not response_payload.get("ok"):
             raise ValueError(response_payload.get("error") or "Google Sheet rejected order")
 
@@ -330,13 +331,7 @@ def sync_order_to_google_sheet(order_record, proof_path):
             "payment_proof_url": response_payload.get("payment_proof_url"),
             "duplicate": bool(response_payload.get("duplicate")),
         }
-    except (
-        OSError,
-        TimeoutError,
-        ValueError,
-        json.JSONDecodeError,
-        urllib_error.URLError,
-    ) as exc:
+    except Exception as exc:  # noqa: BLE001 - external sync must never fail checkout
         print(
             f"[sheets] Failed to sync order {order_record['order_reference']}: {exc}"
         )
